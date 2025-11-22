@@ -4,62 +4,81 @@
     "role": "Angehöriger",
     "email": "max@example.com"
   },
+
   "patientProfile": {
     "name": "Erika Musterfrau",
-    "doctor": "Dr. Schmidt",
+    "primaryDoctor": "Dr. Schmidt",
+
     "medications": [
       {
+        "id": "med_1",
         "name": "Aspirin",
-        "dose": "100mg",
-        "amount": 2,
+        "dose": "100 mg",
+        "amountLeft": 2,
         "refillInDays": 3
       },
       {
+        "id": "med_2",
         "name": "Vitamin D",
         "dose": "5000 IU",
-        "amount": 10,
+        "amountLeft": 10,
         "refillInDays": 7
       }
     ],
+
     "tasks": [
       {
-        "task": "Arzttermin",
+        "id": "task_1",
+        "title": "Arzttermin",
         "date": "2025-11-25",
         "done": false
       },
       {
-        "task": "Medikamente nachfüllen",
+        "id": "task_2",
+        "title": "Medikamente nachfüllen",
         "date": "2025-11-23",
         "done": false
       }
-    ],
-    "appointments": [
-      {
-        "title": "Physiotherapie",
-        "date": "2025-11-23 10:00"
-      },
-      {
-        "title": "Bluttest",
-        "date": "2025-11-26 14:00"
-      }
     ]
   },
+
   "pastAppointments": [
     {
+      "id": "app_1",
       "type": "Checkup",
-      "date": "2025-08-01T00:00:00"
+      "date": "2025-08-01T00:00:00Z"
     },
     {
+      "id": "app_2",
       "type": "Checkup",
-      "date": "2025-11-01T00:00:00"
+      "date": "2025-11-01T00:00:00Z"
     },
     {
+      "id": "app_3",
       "type": "Physiotherapie",
-      "date": "2025-11-05T00:00:00"
+      "date": "2025-11-05T00:00:00Z"
     },
     {
+      "id": "app_4",
       "type": "Physiotherapie",
-      "date": "2025-11-12T00:00:00"
+      "date": "2025-11-12T00:00:00Z"
+    }
+  ],
+
+  "medicalNotes": [
+    {
+      "id": "note_1",
+      "title": "Orthopädie Arztbrief",
+      "content": "Befund: leichte Coxarthrose links...",
+      "createdAt": "2025-11-20T09:00:00Z",
+      "status": "discussed"
+    },
+    {
+      "id": "note_2",
+      "title": "Kardiologie Gespräch",
+      "content": "Empfehlung: Betablocker erhöhen...",
+      "createdAt": "2025-11-23T16:00:00Z",
+      "status": "new"
     }
   ]
 }

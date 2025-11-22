@@ -10,38 +10,54 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Care Companion Dashboard')),
-      drawer: const Menu(), // Drawer für das Burgermenü
+      drawer: const Menu(),
       body: ListView(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(12),
         children: [
-          const Text('Tasks', style: TextStyle(fontSize: 20)),
-          ...agent.tasks.map(
+          // ---------------- TASKS ----------------
+          ...agent.patient.tasks.map(
             (task) => Card(
               child: ListTile(
-                title: Text(task['task'] ?? 'Unbenannte Aufgabe'),
-                subtitle: task['date'] != null ? Text(task['date'].toString()) : null,
+                title: Text(task.title),
+                subtitle: task.date != null
+                    ? Text(task.date.toString())
+                    : const Text("Kein Datum vorhanden"),
               ),
             ),
           ),
 
-          const SizedBox(height: 16),
-          const Text('Medications', style: TextStyle(fontSize: 20)),
-          ...agent.medications.map(
+          const SizedBox(height: 20),
+
+          // ---------------- MEDICATIONS ----------------
+          ...agent.patient.medications.map(
             (med) => Card(
               child: ListTile(
-                title: Text(med['name'] ?? 'Unbekannte Medikation'),
-                subtitle: med['dose'] != null ? Text(med['dose'].toString()) : null,
+                title: Text(med.name),
+                subtitle: Text("${med.dose} • Noch ${med.amountLeft} Stück"),
               ),
             ),
           ),
 
-          const SizedBox(height: 16),
-          const Text('Appointments', style: TextStyle(fontSize: 20)),
-          ...agent.appointments.map(
+          const SizedBox(height: 20),
+
+          // ---------------- APPOINTMENTS ----------------
+          ...agent.patient.appointments.map(
             (app) => Card(
               child: ListTile(
-                title: Text(app['title'] ?? app['type'] ?? 'Unbekannter Termin'),
-                subtitle: app['date'] != null ? Text(app['date'].toString()) : null,
+                title: Text(app.type),
+                subtitle: Text(app.date.toString()),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // ---------------- DOCUMENTS / MEDICAL NOTES ----------------
+          ...agent.patient.medicalNotes.map(
+            (doc) => Card(
+              child: ListTile(
+                title: Text(doc.title),
+                subtitle: Text("${doc.type} • ${doc.date.toLocal()}"),
               ),
             ),
           ),
@@ -50,3 +66,5 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 }
+
+                                          

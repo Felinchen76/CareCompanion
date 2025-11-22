@@ -1,27 +1,23 @@
-class Task {
+class Appointment {
   final String id;
-  final String title;
+  final String type;
   final DateTime date;
-  final bool done;
 
-  Task({
+  Appointment({
     required this.id,
-    required this.title,
+    required this.type,
     required this.date,
-    required this.done,
   });
 
-  factory Task.fromJson(Map<String, dynamic> json) => Task(
+  factory Appointment.fromJson(Map<String, dynamic> json) => Appointment(
         id: json['id'],
-        title: json['title'],
+        type: json['type'],
         date: DateTime.parse(json['date']),
-        done: json['done'],
       );
 
   Map<String, dynamic> toJson() => {
         'id': id,
-        'title': title,
+        'type': type,
         'date': date.toIso8601String(),
-        'done': done,
       };
 }
