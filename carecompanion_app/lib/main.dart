@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'screens/dashboard.dart';
 import 'services/agent_service.dart';
 import 'screens/placeholder_menu.dart';
+import 'screens/protocolls.dart';
 
 void main() async {
   // Flutter vorbereiten
@@ -34,7 +35,7 @@ class MyApp extends StatelessWidget {
         '/profile': (ctx) => const PlaceholderScreen(title: 'Profil'),
         '/medications': (ctx) => const PlaceholderScreen(title: 'Medikamente'),
         '/tasks': (ctx) => const PlaceholderScreen(title: 'Tasks'),
-        '/documents': (ctx) => const PlaceholderScreen(title: 'Dokumente / Protokolle'),
+        '/protocolls': (ctx) => const ProtocollsScreen(), // <-- echte Seite registriert
         '/requests': (ctx) => const PlaceholderScreen(title: 'Anträge'),
         '/planning': (ctx) => const PlaceholderScreen(title: 'Planung'),
       },

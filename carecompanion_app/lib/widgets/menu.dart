@@ -26,7 +26,7 @@ class Menu extends StatelessWidget {
           ),
           ListTile(
             leading: const Icon(Icons.medication),
-            title: const Text('Medikamente'),
+            title: const Text('Medication'),
             onTap: () {
               Navigator.of(context).pop();
               Navigator.of(context).pushNamed('/medications');
@@ -42,15 +42,15 @@ class Menu extends StatelessWidget {
           ),
           ListTile(
             leading: const Icon(Icons.folder),
-            title: const Text('Dokumente / Protokolle'),
+            title: const Text('Documents / Protocolls'),
             onTap: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pushNamed('/documents');
+                  Navigator.of(context).pop(); // Drawer schließen
+                  Navigator.of(context).pushNamed('/protocolls'); 
             },
           ),
           ListTile(
             leading: const Icon(Icons.description),
-            title: const Text('Anträge'),
+            title: const Text('Requests'),
             onTap: () {
               Navigator.of(context).pop();
               Navigator.of(context).pushNamed('/requests');
@@ -58,7 +58,7 @@ class Menu extends StatelessWidget {
           ),
           ListTile(
             leading: const Icon(Icons.calendar_today),
-            title: const Text('Planung'),
+            title: const Text('Planning'),
             onTap: () {
               Navigator.of(context).pop();
               Navigator.of(context).pushNamed('/planning');
