@@ -1,15 +1,14 @@
-// ...existing code...
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
-import '../models/task.dart';
+import '../models/task.dart' as task_model;
 import '../models/medication.dart';
 import '../models/appointment.dart';
 import '../models/medical_note.dart' as mednote;
-import '../models/patient.dart'; // PatientProfile usw.
-import '../models/user.dart'; // PatientProfile usw.
+import '../models/patient.dart';
+import '../models/user.dart';
 
 
 class AgentService {
@@ -27,6 +26,80 @@ class AgentService {
   late PatientProfile patient;
 
   AgentService({this.quietFromHour = 22, this.quietToHour = 7});
+
+  // ...existing code...
+  Future<void> _speakIfActive(String message) async {
+    final now = DateTime.now();
+    // Prüfe Ruhezeiten (quietFromHour/quietToHour sind non-nullable ints)
+    final h = now.hour;
+    final withinQuiet = (quietFromHour < quietToHour)
+        ? (h >= quietFromHour && h < quietToHour)
+        : (h >= quietFromHour || h < quietToHour);
+    if (withinQuiet) {
+      // keine Sprachausgabe in Ruhezeiten
+      // ignore: avoid_print
+      print('TTS unterdrückt (Ruhezeit): $message');
+      return;
+    }
+    try {
+      await _flutterTts.speak(message);
+      await Future.delayed(const Duration(milliseconds: 500));
+    } catch (e) {
+      // ignore: avoid_print
+      print('TTS error: $e');
+    }
+  }
+  Future<void> _analyzeAndActOnNote(mednote.MedicalNote note) async {
+    final text = (note.content ?? '').toString();
+    if (text.trim().isEmpty) return;
+
+    // Extrahiere Daten, Medikamente, Schlüsselwörter
+    final dates = _extractDatesFromText(text);
+    final meds = _extractMedicationsFromText(text);
+    final followUps = _extractFollowUpKeywords(text);
+
+    // Erstelle Tasks / Termine / Empfehlungen basierend auf Erkennung
+    if (dates.isNotEmpty) {
+      for (final dt in dates) {
+        final t = task_model.Task(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          title: 'Folgetermin prüfen: ${note.title}',
+          date: dt,
+          done: false,
+        );
+        (patient.tasks as List).insert(0, t);
+        await _speakIfActive('Vorschlag: Folgetermin am ${dt.toLocal().toString().split(" ")[0]} für "${note.title}"');
+      }
+    }
+
+    if (meds.isNotEmpty) {
+      final medsStr = meds.join(', ');
+      final t = task_model.Task(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: 'Medikament prüfen / Rezept nachbestellen: $medsStr',
+        date: DateTime.now(),
+        done: false,
+      );
+      (patient.tasks as List).insert(0, t);
+      await _speakIfActive('Hinweis: Medikamente erkannt: $medsStr. Rezept/Nachbestellung empfehlen.');
+    }
+
+    if (followUps.isNotEmpty) {
+      final t = task_model.Task(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: 'Folgeaktion: ${followUps.first}',
+        date: DateTime.now(),
+        done: false,
+      );
+      (patient.tasks as List).insert(0, t);
+      await _speakIfActive('Hinweis aus Notiz: ${followUps.first}');
+    }
+
+    // Optional: markiere Note als verarbeitet (sofern Modell das unterstützt)
+    try {
+      note.markDiscussed();
+    } catch (_) {}
+  }
 
   // ----------------------------------------------------
   // LOAD DATA (Dummy)
@@ -176,17 +249,104 @@ class AgentService {
       if (text.contains('Aspirin')) {
         await _speakIfActive('In einer neuen Notiz wurde Aspirin erwähnt.');
       }
+
+      // neue: tiefergehende Analyse und automatische Folgeaktionen (prototypisch)
+      try {
+        if (medNote is mednote.MedicalNote) {
+          await _analyzeAndActOnNote(medNote);
+        }
+      } catch (e) {
+        // ignore analysis errors
+        // ignore: avoid_print
+        print('Note analysis failed: $e');
+      }
     }
   }
 
-  // Einfacher TTS-Helper, der Ruhezeiten respektiert
-  Future<void> _speakIfActive(String message) async {
-    if (_isWithinQuietHours(DateTime.now())) {
-      print('TTS unterdrückt wegen Ruhezeit: $message');
-      return;
+  // ------------------------ NOTE ANALYSIS & ACTIONS (prototype) ------------------------
+  // Duplicate analysis method removed. Use the single _analyzeAndActOnNote earlier
+  // which already uses task_model.Task and _speakIfActive.
+
+  List<DateTime> _extractDatesFromText(String text) {
+    final List<DateTime> res = [];
+
+    // 1) dd.mm.yyyy oder d.m.yyyy
+    final reDe = RegExp(r'\b(\d{1,2}\.\d{1,2}\.\d{2,4})\b');
+    for (final m in reDe.allMatches(text)) {
+      final s = m.group(1);
+      if (s != null) {
+        final parts = s.split('.');
+        if (parts.length >= 3) {
+          final d = int.tryParse(parts[0]);
+          final mo = int.tryParse(parts[1]);
+          final y = int.tryParse(parts[2]);
+          if (d != null && mo != null && y != null) {
+            try {
+              final dt = DateTime(y < 100 ? 2000 + y : y, mo, d);
+              res.add(dt);
+            } catch (_) {}
+          }
+        }
+      }
     }
-    await _flutterTts.speak(message);
-    // optional: warte kurz
-    await Future.delayed(const Duration(seconds: 1));
+
+    // 2) ISO yyyy-mm-dd
+    final reIso = RegExp(r'\b(\d{4}-\d{2}-\d{2})\b');
+    for (final m in reIso.allMatches(text)) {
+      final s = m.group(1);
+      if (s != null) {
+        final dt = DateTime.tryParse(s);
+        if (dt != null) res.add(dt);
+      }
+    }
+
+    // 3) relative Angaben "in X Tagen/Wochen/Monaten"
+    final reRel = RegExp(r'in\s+(\d{1,3})\s+(tag|tage|tagen|woche|wochen|monat|monaten)', caseSensitive: false);
+    for (final m in reRel.allMatches(text)) {
+      final num = int.tryParse(m.group(1) ?? '');
+      final unit = (m.group(2) ?? '').toLowerCase();
+      if (num != null) {
+        DateTime dt = DateTime.now();
+        if (unit.startsWith('tag')) dt = dt.add(Duration(days: num));
+        else if (unit.startsWith('woche')) dt = dt.add(Duration(days: num * 7));
+        else if (unit.startsWith('monat')) dt = DateTime(dt.year, dt.month + num, dt.day);
+        res.add(dt);
+      }
+    }
+
+    // dedup & return
+    final uniq = <int, DateTime>{};
+    for (final d in res) uniq[d.millisecondsSinceEpoch] = d;
+    return uniq.values.toList();
   }
+
+  List<String> _extractMedicationsFromText(String text) {
+    final found = <String>{};
+
+    // einfache Liste bekannter Wirkstoffe (erweitern)
+    final known = ['aspirin', 'metformin', 'lisinopril', 'ibuprofen', 'paracetamol', 'atorvastatin'];
+    for (final k in known) {
+      if (text.toLowerCase().contains(k)) found.add(k[0].toUpperCase() + k.substring(1));
+    }
+
+    // suche nach Mustern wie "500 mg"
+    final doseRe = RegExp(r'([A-Za-zÄÖÜäöüß]{3,}\s*\d{1,4}\s?mg)', caseSensitive: false);
+    for (final m in doseRe.allMatches(text)) {
+      final s = m.group(1);
+      if (s != null) found.add(s.trim());
+    }
+
+    return found.toList();
+  }
+
+  List<String> _extractFollowUpKeywords(String text) {
+    final kws = <String>[];
+    final candidates = ['Folgetermin', 'Kontrolle', 'Nachsorge', 'Überweisung', 'Rezept', 'Labor'];
+    final low = text.toLowerCase();
+    for (final k in candidates) {
+      if (low.contains(k.toLowerCase())) kws.add(k);
+    }
+    return kws;
+  }
+
 }
