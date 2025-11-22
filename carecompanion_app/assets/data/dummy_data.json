@@ -1,0 +1,65 @@
+{
+  "userProfile": {
+    "name": "Max Mustermann",
+    "role": "Angehöriger",
+    "email": "max@example.com"
+  },
+  "patientProfile": {
+    "name": "Erika Musterfrau",
+    "doctor": "Dr. Schmidt",
+    "medications": [
+      {
+        "name": "Aspirin",
+        "dose": "100mg",
+        "amount": 2,
+        "refillInDays": 3
+      },
+      {
+        "name": "Vitamin D",
+        "dose": "5000 IU",
+        "amount": 10,
+        "refillInDays": 7
+      }
+    ],
+    "tasks": [
+      {
+        "task": "Arzttermin",
+        "date": "2025-11-25",
+        "done": false
+      },
+      {
+        "task": "Medikamente nachfüllen",
+        "date": "2025-11-23",
+        "done": false
+      }
+    ],
+    "appointments": [
+      {
+        "title": "Physiotherapie",
+        "date": "2025-11-23 10:00"
+      },
+      {
+        "title": "Bluttest",
+        "date": "2025-11-26 14:00"
+      }
+    ]
+  },
+  "pastAppointments": [
+    {
+      "type": "Checkup",
+      "date": "2025-08-01T00:00:00"
+    },
+    {
+      "type": "Checkup",
+      "date": "2025-11-01T00:00:00"
+    },
+    {
+      "type": "Physiotherapie",
+      "date": "2025-11-05T00:00:00"
+    },
+    {
+      "type": "Physiotherapie",
+      "date": "2025-11-12T00:00:00"
+    }
+  ]
+}
