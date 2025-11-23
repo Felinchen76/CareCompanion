@@ -17,7 +17,7 @@ Home care often means keeping track of medications, doctor's appointments, presc
 ---
 
 **Try it first**: 
-Explore our [interactive Figma prototype]([https://www.figma.com/proto/DEIN-LINK](https://www.figma.com/proto/tzVg3frSlWP5HQk8bAz21s/Care-Companion?node-id=99-3120&t=aIKQEEoxUKNCmUZu-1&scaling=scale-down&content-scaling=fixed&page-id=0%3A1&starting-point-node-id=99%3A3120&show-proto-sidebar=1)) to see CareCompanion in action without installation!
+Explore our [interactive Figma prototype](https://www.figma.com/proto/tzVg3frSlWP5HQk8bAz21s/Care-Companion?node-id=99-3120&t=aIKQEEoxUKNCmUZu-1&scaling=scale-down&content-scaling=fixed&page-id=0%3A1&starting-point-node-id=99%3A3120&show-proto-sidebar=1) to see CareCompanion in action without installation!
 
 PS: You need to request access first - but we will give you that as quick as possible!
 
