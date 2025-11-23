@@ -92,7 +92,6 @@ class _ProtocollsScreenState extends State<ProtocollsScreen> {
   // ---------------- pick & add file (web & mobile safe) ----------------
   Future<void> _pickAndAddFile() async {
     try {
-      // pick file with bytes (works on web)
       final result = await FilePicker.platform.pickFiles(
         withData: true,
         allowMultiple: false,
@@ -100,20 +99,22 @@ class _ProtocollsScreenState extends State<ProtocollsScreen> {
         allowedExtensions: ['pdf', 'doc', 'docx', 'png', 'jpg', 'jpeg'],
       );
 
-      if (result == null || result.files.isEmpty) {
-        return;
-      }
+      if (result == null || result.files.isEmpty) return;
 
       final pf = result.files.first;
       final bytes = pf.bytes;
       final title = pf.name;
-      final displayPath = bytes == null ? pf.path : 'memory:$title';
+
+      if (bytes == null) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Datei enthält keine Daten (Plattform-Limitation)')));
+        return;
+      }
 
       final rec = ProtocolRecord(
         id: _uuid.v4(),
         title: title,
         type: 'file',
-        path: displayPath,
+        path: 'memory:$title',
         bytes: bytes,
       );
 
@@ -121,187 +122,13 @@ class _ProtocollsScreenState extends State<ProtocollsScreen> {
       setState(() => _records.insert(0, rec));
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Datei hinzugefügt: $title')));
 
-      if (bytes == null) {
-        // Some platforms may not provide bytes — inform user
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Datei enthält keine Daten (Web)')));
-        return;
-      }
+      // Jetzt analysieren (rufe _analyzeFile auf)
+      await _analyzeFile(rec);
 
-      // send to backend for extraction/analysis
-      try {
-        final resp = await _backend.analyzeFile(Uint8List.fromList(bytes), title);
-        final analysisData = resp['analysis'] as Map<String, dynamic>? ?? <String, dynamic>{};
-        
-        // DEBUG: log analysisData
-        // ignore: avoid_print
-        print('[Protocolls] Backend analysis: ${const JsonEncoder.withIndent("  ").convert(analysisData)}');
-        
-        // show JSON analysis to user
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (_) => AlertDialog(
-              title: const Text('Analyse Ergebnis'),
-              content: SingleChildScrollView(child: Text(const JsonEncoder.withIndent('  ').convert(analysisData))),
-              actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
-            ),
-          );
-        }
-
-        // persist note (best-effort)
-        try {
-          final noteJson = {
-            'id': rec.id,
-            'title': rec.title,
-            'content': analysisData['raw'] ?? '',
-            'date': rec.createdAt.toIso8601String(),
-            'type': 'file',
-            'sourcePath': rec.path,
-            'status': MedicalNoteStatus.newNote.index,
-            'analysis': analysisData, // store for later viewing
-          };
-          final note = MedicalNote.fromJson(noteJson);
-          await _noteService.addNote(note);
-        } catch (e) {
-          // ignore: avoid_print
-          print('Persisting note failed: $e');
-        }
-
-        // Update in-memory ProtocolRecord so detail view can show analysis
-        final idx = _records.indexWhere((r) => r.id == rec.id);
-        if (idx != -1) {
-          final old = _records[idx];
-          _records[idx] = ProtocolRecord(
-            id: old.id,
-            title: old.title,
-            type: old.type,
-            path: old.path,
-            bytes: old.bytes,
-            text: old.text,
-            analysis: analysisData,
-            createdAt: old.createdAt,
-          );
-          if (mounted) setState(() {});
-        }
-
-        // Build proposals from analysisData
-        final proposed = <task_model.Task>[];
-
-        // actions
-        final actions = (analysisData['actions'] is List) ? (analysisData['actions'] as List) : [];
-        // ignore: avoid_print
-        print('[Protocolls] Found ${actions.length} actions in analysis');
-        for (final a in actions) {
-          final titleA = (a['title'] ?? 'Vorschlag').toString();
-          DateTime dateA = DateTime.now();
-          if (a['date'] != null) {
-            final parsed = DateTime.tryParse(a['date'].toString());
-            if (parsed != null) dateA = parsed;
-          }
-          proposed.add(task_model.Task(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            title: titleA,
-            date: dateA,
-            done: false,
-          ));
-        }
-
-        // medications -> one proposal
-        final meds = (analysisData['medications'] is List) ? List.from(analysisData['medications']) : [];
-        // ignore: avoid_print
-        print('[Protocolls] Found ${meds.length} medications in analysis');
-        if (meds.isNotEmpty) {
-          final medsStr = meds.map((m) {
-            if (m is Map) {
-              final n = m['name'] ?? m['drug'] ?? m.toString();
-              final d = m['dose'] ?? '';
-              return d.toString().isNotEmpty ? '$n ($d)' : '$n';
-            }
-            return m.toString();
-          }).join(', ');
-          proposed.add(task_model.Task(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            title: 'Medikament prüfen: $medsStr',
-            date: DateTime.now(),
-            done: false,
-          ));
-        }
-
-        // dates -> proposals
-        final dates = (analysisData['dates'] is List) ? List.from(analysisData['dates']) : [];
-        // ignore: avoid_print
-        print('[Protocolls] Found ${dates.length} dates in analysis');
-        for (final d in dates) {
-          DateTime? dt;
-          if (d is String) dt = DateTime.tryParse(d);
-          if (d is int) dt = DateTime.fromMillisecondsSinceEpoch(d);
-          if (dt != null) {
-            proposed.add(task_model.Task(
-              id: DateTime.now().millisecondsSinceEpoch.toString(),
-              title: 'Folgetermin prüfen',
-              date: dt,
-              done: false,
-            ));
-          }
-        }
-
-        // ignore: avoid_print
-        print('[Protocolls] Total proposed tasks: ${proposed.length}');
-
-        // Falls keine Proposals, zeige Info und skip
-        if (proposed.isEmpty) {
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Keine Vorschläge aus Analyse erzeugt')));
-          return;
-        }
-        
-        final accept = await _showProposedTasksDialog(proposed) ?? false;
-        // ignore: avoid_print
-        print('[Protocolls] User accepted proposals: $accept');
-
-        if (accept) {
-          // apply via agent (this will create task objects)
-          final created = await _agent.applyAnalysisToPatient(analysisData, sourceTitle: rec.title);
-          // ignore: avoid_print
-          print('[Protocolls] Agent created ${created.length} tasks');
-
-          // insert into patient.tasks so Dashboard will list them
-          for (final t in created) {
-            try {
-              // bypass static type mismatch by casting to List at runtime
-              (_agent.patient.tasks as List).insert(0, t);
-            } catch (e) {
-              // ignore: avoid_print
-              print('Failed to insert task into patient.tasks: $e');
-            }
-
-            // also keep the UI record so you can execute it from this list
-            if (!mounted) continue;
-            setState(() {
-              _records.insert(
-                0,
-                ProtocolRecord(
-                  id: _uuid.v4(),
-                  title: 'Task: ${t.title}',
-                  type: 'text',
-                  text: jsonEncode(t.toJson()), // keep task JSON for execution
-                  createdAt: t.date,
-                ),
-              );
-            });
-          }
-
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Agent hat ${created.length} Vorschläge erzeugt')));
-        } else {
-          // user rejected suggestions -> log or show notification
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vorschläge verworfen')));
-        }
-      } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Analyse fehlgeschlagen: $e')));
-      }
     } catch (e, st) {
       // ignore: avoid_print
       print('[_pickAndAddFile] ERROR: $e\n$st');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler beim Hinzufügen: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
     }
   }
 
