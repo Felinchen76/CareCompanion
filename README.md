@@ -298,8 +298,6 @@ Upload → should extract 2 medications + 1 appointment + 3 actions
 
 ---
 
-Individual or group maintenance members can contribute.
-
 Contributions are welcome! Here's how you can help:
 
 1. **Fork** the repository
@@ -308,5 +306,12 @@ Contributions are welcome! Here's how you can help:
 4. **Push** the branch: `git push origin feature/awesome-feature`
 5. Open a **Pull Request**
 
+## Contact
 
-**Mit ❤️ entwickelt für Pflegebedürftige und ihre Angehörigen**
+In Case of any Questions or Problems:
+- **Issues**: [GitHub Issues](https://github.com/dein-username/CareCompanion/issues)
+
+**Developed with ❤️ for people in need of care and their relatives**
+
+Developed by Anna-Carina Gehlisch & Felicitas Lock
+HACKATUM '25 Group Name: CareCompanion
