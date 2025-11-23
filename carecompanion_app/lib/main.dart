@@ -1,22 +1,19 @@
 import 'package:flutter/material.dart';
 import 'screens/dashboard.dart';
-import 'services/agent_service.dart';
-import 'screens/placeholder_menu.dart';
+import 'screens/profile.dart';
+import 'screens/medications.dart';
+import 'screens/tasks.dart';
 import 'screens/protocolls.dart';
+import 'services/agent_service.dart';
 
 void main() async {
-  // Flutter vorbereiten
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Agent initialisieren und Dummy-Daten laden
-  final agent = AgentService();
-  await agent.loadDummyData();
-
-  // Agenten starten (z.B. für Terminerinnerungen)
-  agent.startAgent();
-
-  // App starten
-  runApp(MyApp(agent: agent));
+  
+  // Lade Dummy-Daten & starte Agent sofort
+  await agentService.loadDummyData();
+  agentService.startAgent();
+  
+  runApp(MyApp(agent: agentService));
 }
 
 class MyApp extends StatelessWidget {
@@ -29,16 +26,45 @@ class MyApp extends StatelessWidget {
       title: 'Care Companion',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
       ),
       home: DashboardScreen(agent: agent),
+      // routen zu seiten
       routes: {
-        '/profile': (ctx) => const PlaceholderScreen(title: 'Profil'),
-        '/medications': (ctx) => const PlaceholderScreen(title: 'Medikamente'),
-        '/tasks': (ctx) => const PlaceholderScreen(title: 'Tasks'),
-        '/protocolls': (ctx) => const ProtocollsScreen(), // <-- echte Seite registriert
+        '/dashboard': (ctx) => DashboardScreen(agent: agent),
+        '/profile': (ctx) => const ProfileScreen(),
+        '/medications': (ctx) => MedicationsScreen(agent: agent),
+        '/tasks': (ctx) => TasksScreen(agent: agent),
+        '/protocolls': (ctx) => const ProtocollsScreen(),
         '/requests': (ctx) => const PlaceholderScreen(title: 'Anträge'),
         '/planning': (ctx) => const PlaceholderScreen(title: 'Planung'),
       },
+    );
+  }
+}
+
+// Placeholder für noch nicht implementierte Screens
+class PlaceholderScreen extends StatelessWidget {
+  final String title;
+  const PlaceholderScreen({super.key, required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.construction, size: 80, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            Text(
+              '$title (in Entwicklung)',
+              style: TextStyle(fontSize: 18, color: Colors.grey.shade600),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

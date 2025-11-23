@@ -104,6 +104,7 @@ def api_extract():
 
     try:
         analysis = call_openai_extract(text)
+        print(f"[OpenAI Analysis] {json.dumps(analysis, indent=2, ensure_ascii=False)}")
     except Exception as e:
         return jsonify({"text": text, "error": str(e)}), 500
 

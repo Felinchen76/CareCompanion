@@ -2,18 +2,22 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/task.dart' as task_model;
 import '../models/medication.dart';
-import '../models/appointment.dart';
+import '../models/appointment.dart' as app_model;
 import '../models/medical_note.dart' as mednote;
 import '../models/patient.dart';
 import '../models/user.dart';
 
-
 class AgentService {
   final FlutterTts _flutterTts = FlutterTts();
   final stt.SpeechToText _speech = stt.SpeechToText();
+
+  AgentService._internal() : quietFromHour = 22, quietToHour = 7;
+  static final AgentService instance = AgentService._internal();
+  factory AgentService() => instance;
 
   bool _isRunning = false;
 
@@ -25,80 +29,110 @@ class AgentService {
   late UserProfile user;
   late PatientProfile patient;
 
-  AgentService({this.quietFromHour = 22, this.quietToHour = 7});
+  bool get isRunning => _isRunning;
 
-  // ...existing code...
   Future<void> _speakIfActive(String message) async {
     final now = DateTime.now();
-    // Prüfe Ruhezeiten (quietFromHour/quietToHour sind non-nullable ints)
-    final h = now.hour;
-    final withinQuiet = (quietFromHour < quietToHour)
-        ? (h >= quietFromHour && h < quietToHour)
-        : (h >= quietFromHour || h < quietToHour);
-    if (withinQuiet) {
-      // keine Sprachausgabe in Ruhezeiten
+    if (_isWithinQuietHours(now)) {
+      // unterdrücke TTS in Ruhezeiten
       // ignore: avoid_print
       print('TTS unterdrückt (Ruhezeit): $message');
       return;
     }
     try {
       await _flutterTts.speak(message);
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 300));
     } catch (e) {
       // ignore: avoid_print
       print('TTS error: $e');
     }
   }
-  Future<void> _analyzeAndActOnNote(mednote.MedicalNote note) async {
-    final text = (note.content ?? '').toString();
-    if (text.trim().isEmpty) return;
 
-    // Extrahiere Daten, Medikamente, Schlüsselwörter
-    final dates = _extractDatesFromText(text);
-    final meds = _extractMedicationsFromText(text);
-    final followUps = _extractFollowUpKeywords(text);
+  /// Erzeugt aus strukturierter Analyse eine Liste von Tasks (keine UI‑Persistenz hier).
+  Future<List<task_model.Task>> applyAnalysisToPatient(Map<String, dynamic> analysis, {String? sourceTitle}) async {
+    final created = <task_model.Task>[];
+    final now = DateTime.now();
 
-    // Erstelle Tasks / Termine / Empfehlungen basierend auf Erkennung
-    if (dates.isNotEmpty) {
-      for (final dt in dates) {
-        final t = task_model.Task(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          title: 'Folgetermin prüfen: ${note.title}',
-          date: dt,
-          done: false,
-        );
-        (patient.tasks as List).insert(0, t);
-        await _speakIfActive('Vorschlag: Folgetermin am ${dt.toLocal().toString().split(" ")[0]} für "${note.title}"');
+    // actions -> direkte Aufgaben
+    final actions = (analysis['actions'] is List) ? List<Map<String, dynamic>>.from(analysis['actions']) : <Map<String, dynamic>>[];
+    for (final a in actions) {
+      final title = (a['title'] ?? 'Vorschlag').toString();
+      DateTime date = now;
+      if (a['date'] != null) {
+        final parsed = DateTime.tryParse(a['date'].toString());
+        if (parsed != null) date = parsed;
       }
+      final t = task_model.Task(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: title + (sourceTitle != null ? ' — aus $sourceTitle' : ''),
+        date: date,
+        done: false,
+      );
+      created.add(t);
+      await _speakIfActive('Vorschlag: $title');
     }
 
+    // medications -> eine zusammenfassende Aufgabe
+    final meds = (analysis['medications'] is List) ? List<dynamic>.from(analysis['medications']) : <dynamic>[];
     if (meds.isNotEmpty) {
-      final medsStr = meds.join(', ');
+      final medsStr = meds.map((m) {
+        if (m is Map) {
+          final n = m['name'] ?? m['drug'] ?? m.toString();
+          final d = m['dose'] ?? '';
+          return d.toString().isNotEmpty ? '$n ($d)' : '$n';
+        }
+        return m.toString();
+      }).join(', ');
       final t = task_model.Task(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
-        title: 'Medikament prüfen / Rezept nachbestellen: $medsStr',
-        date: DateTime.now(),
+        title: 'Medikament prüfen / Rezept: $medsStr',
+        date: now,
         done: false,
       );
-      (patient.tasks as List).insert(0, t);
-      await _speakIfActive('Hinweis: Medikamente erkannt: $medsStr. Rezept/Nachbestellung empfehlen.');
+      created.add(t);
+      await _speakIfActive('Medikamente erkannt: $medsStr');
     }
 
-    if (followUps.isNotEmpty) {
+    // dates -> konkrete Terminprüfungen
+    final dates = (analysis['dates'] is List) ? List<dynamic>.from(analysis['dates']) : <dynamic>[];
+    for (final d in dates) {
+      DateTime? dt;
+      if (d is String) dt = DateTime.tryParse(d);
+      if (d is int) dt = DateTime.fromMillisecondsSinceEpoch(d);
+      if (dt == null) continue;
       final t = task_model.Task(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
-        title: 'Folgeaktion: ${followUps.first}',
-        date: DateTime.now(),
+        title: 'Folgetermin prüfen',
+        date: dt,
         done: false,
       );
-      (patient.tasks as List).insert(0, t);
-      await _speakIfActive('Hinweis aus Notiz: ${followUps.first}');
+      created.add(t);
+      await _speakIfActive('Vorgeschlagener Termin: ${dt.toLocal().toString().split(" ")[0]}');
     }
 
-    // Optional: markiere Note als verarbeitet (sofern Modell das unterstützt)
-    try {
-      note.markDiscussed();
-    } catch (_) {}
+    // debug log:
+    // ignore: avoid_print
+    print('[AgentService] applyAnalysisToPatient created ${created.length} tasks for source="$sourceTitle"');
+    return created;
+  }
+
+  /// Simuliert Ausführung eines Tasks (z.B. Kalender öffnen / Rezept anfordern).
+  /// Gibt ein kurzes Ergebnis-String zurück.
+  Future<String> executeTask(task_model.Task t) async {
+    final title = t.title.toLowerCase();
+    // einfache heuristische Simulation
+    if (title.contains('termin')) {
+      // Simuliere Kalender-Action
+      await _speakIfActive('Öffne Kalender, Termin anfragen.');
+      return 'Simuliert: Kalender geöffnet / Terminanforderung vorbereitet für ${t.date.toLocal().toString().split(" ")[0]}.';
+    }
+    if (title.contains('medik') || title.contains('rezept')) {
+      await _speakIfActive('Rezept-Anforderung vorbereitet.');
+      return 'Simuliert: Rezeptanforderung für "${t.title}" vorbereitet.';
+    }
+    // Default
+    await _speakIfActive('Aufgabe ausgeführt.');
+    return 'Simuliert: Aufgabe "${t.title}" ausgeführt.';
   }
 
   // ----------------------------------------------------
@@ -110,6 +144,52 @@ class AgentService {
 
     user = UserProfile.fromJson(jsonData['userProfile'] ?? <String, dynamic>{});
     patient = PatientProfile.fromJson(jsonData['patientProfile'] ?? <String, dynamic>{});
+    
+    // Demo: füge wiederkehrende Termine hinzu (für Recurrence-Analyse-Demo)
+    final now = DateTime.now();
+    try {
+      final appointments = patient.appointments as List;
+      if (appointments.length < 3) {
+        // 3 Zahnarzt-Termine alle 180 Tage (letzter vor 10 Tagen)
+        final demoApps = <app_model.Appointment>[
+          app_model.Appointment.fromJson({
+            'id': 'demo_app_1',
+            'date': now.subtract(const Duration(days: 370)).toIso8601String(),
+            'type': 'Zahnarzt',
+            'doctor': 'Dr. Müller',
+          }),
+          app_model.Appointment.fromJson({
+            'id': 'demo_app_2',
+            'date': now.subtract(const Duration(days: 190)).toIso8601String(),
+            'type': 'Zahnarzt',
+            'doctor': 'Dr. Müller',
+          }),
+          app_model.Appointment.fromJson({
+            'id': 'demo_app_3',
+            'date': now.subtract(const Duration(days: 10)).toIso8601String(),
+            'type': 'Zahnarzt',
+            'doctor': 'Dr. Müller',
+          }),
+        ];
+        for (final a in demoApps) {
+          appointments.add(a);
+        }
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print('Demo appointments error: $e');
+    }
+    
+    // Demo: füge proaktiv einen Task hinzu (zeigt, dass Agent ohne User-Input arbeitet)
+    final demoTask = task_model.Task(
+      id: 'demo_${DateTime.now().millisecondsSinceEpoch}',
+      title: 'Proaktiv: Medikamentenbestand prüfen',
+      date: DateTime.now().add(const Duration(days: 1)),
+      done: false,
+    );
+    try {
+      (patient.tasks as List).insert(0, demoTask);
+    } catch (_) {}
   }
 
   // ----------------------------------------------------
@@ -148,6 +228,7 @@ class AgentService {
   void startAgent() {
     if (_isRunning) return;
     _isRunning = true;
+    _speakIfActive('Agent gestartet. Ich überwache Medikamente, Termine und Dokumente.');
     _agentLoop();
   }
 
@@ -256,10 +337,56 @@ class AgentService {
           await _analyzeAndActOnNote(medNote);
         }
       } catch (e) {
-        // ignore analysis errors
-        // ignore: avoid_print
+        // ignoriere analysis errors
+        // ignoriere avoid_print
         print('Note analysis failed: $e');
       }
+    }
+  }
+
+  /// Analysiert eine MedicalNote, erstellt Tasks via applyAnalysisToPatient und fügt diese in patient.tasks ein.
+  /// Markiert die Note als verarbeitet (falls möglich).
+  Future<void> _analyzeAndActOnNote(mednote.MedicalNote note) async {
+    final text = (note.content ?? '').toString();
+    if (text.trim().isEmpty) return;
+    // Versuche, strukturierte Analyse durchzuführen (hier: falls note.analysis bereits vorhanden, nutze sie;
+    // ansonsten könnte man die Server-Analyse erneut anstoßen — für Prototype verwenden wir lokale Extraction)
+    Map<String, dynamic> analysis = {};
+    try {
+      // Wenn note enthält bereits eine strukturierte Analyse-Felder, nutze diese
+      if (note.toJson().containsKey('analysis')) {
+        final a = note.toJson()['analysis'];
+        if (a is Map<String, dynamic>) analysis = a;
+      }
+    } catch (_) {}
+
+    // Wenn keine Analyse vorhanden: einfache heuristische Extraktion mit internen Extractors
+    if (analysis.isEmpty) {
+      analysis = {
+        'dates': _extractDatesFromText(text).map((d) => d.toIso8601String()).toList(),
+        'medications': _extractMedicationsFromText(text),
+        'actions': _extractFollowUpKeywords(text).map((k) => {'title': k, 'description': 'Erkannter Hinweis: $k'}).toList(),
+      };
+    }
+
+    // Erzeuge Tasks (rein lokal) und füge sie in patient.tasks ein
+    final tasks = await applyAnalysisToPatient(analysis, sourceTitle: note.title);
+    for (final t in tasks) {
+      try {
+        (patient.tasks as List).insert(0, t);
+      } catch (_) {
+        // ignore insertion errors
+      }
+    }
+
+    // Markiere Note als verarbeitet, falls Methode/Enum vorhanden
+    try {
+      note.markDiscussed();
+    } catch (_) {
+      // falls nicht vorhanden, setze status falls Feld existiert
+      try {
+        note.status = mednote.MedicalNoteStatus.discussed;
+      } catch (_) {}
     }
   }
 
@@ -350,3 +477,6 @@ class AgentService {
   }
 
 }
+
+// create a global alias for imports that want a top-level instance
+final AgentService agentService = AgentService();

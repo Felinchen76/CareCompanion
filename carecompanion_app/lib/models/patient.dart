@@ -29,6 +29,8 @@ class Task {
     );
   }
 
+  get id => null;
+
   Map<String, dynamic> toJson() => {
         'title': title,
         'description': description,
